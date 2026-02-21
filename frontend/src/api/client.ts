@@ -1,3 +1,5 @@
+import {type IUser, type IApiResponse, type ICreateUserRequest } from "../types"
+
 export class ApiError extends Error {
     status: number
 
@@ -15,10 +17,24 @@ class ApiClient {
         this.baseUrl = baseUrl
     }
 
-    private async request(
+    private buildUrl (endpoint: string, params?: Record<string, any>) {
+        const url = new URL(`${this.baseUrl}${endpoint}`)
+
+        if(params) {
+            Object.entries(params).forEach(([Key, value]) => {
+                if(value !== undefined && Key !== undefined) {
+                    url.searchParams.append(Key, String(value))
+                }
+            })
+        }
+
+        return url.toString()
+    }
+
+    private async request<T>(
         endpoint: string,
         options?: RequestInit
-    ) {
+    ): Promise <T> {
         const url = `${this.baseUrl}${endpoint}`
         const config: RequestInit = {
             ...options,
@@ -38,11 +54,47 @@ class ApiClient {
                 )
 
             }
+            return await response.json()
         } catch (error) {
-            
+            if(error instanceof ApiError) {
+                throw error
+            }
+            throw new ApiError(0, `Networt error:
+                ${error instanceof Error ? error.message : "Unknown error"}`)
         }
     }
+    async get<T>(endpoint: string, params?: Record<string, any>): Promise<T>{
+        const url = params ? this.buildUrl(endpoint, params) : endpoint
+        return this.request<T>(url.replaceAll(this.baseUrl, ""),
+        {
+            method: "GET"
+        })
+    }
+
+    async getUsers() {
+        return this.get<IApiResponse<IUser[]>>("/users")
+    }
+
+    async post<TRequest, TResponse>(
+        endpoint: string,
+        data: TRequest
+    ): Promise<TResponse> {
+        return this.request<TResponse>(endpoint,
+        {
+            method: "POST",
+            body: JSON.stringify(data)
+        }
+    )
+    }
+
+    async createUser (data: ICreateUserRequest):
+    Promise<IApiResponse<IUser>> {
+        return this.post<ICreateUserRequest, IApiResponse<IUser>>(`/users`, data)
+    }
 }
+
+
+
 
 export const apiClient = new ApiClient(
     `${import.meta.env.VITE_URL}/api`
